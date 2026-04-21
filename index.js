@@ -1,5 +1,4 @@
 import express from 'express';
-import { disconnect } from 'node:cluster';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import pg from 'pg';
@@ -10,8 +9,8 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
-    credentials: true
-  }
+    credentials: true,
+  },
 });
 
 // PostgreSQL connection
@@ -34,13 +33,13 @@ app.get('/', (req, res) => {
 io.on('connection', async (socket) => {
   console.log('a user connected', socket.id);
 
-if (!socket.recovered) {
+  if (!socket.recovered) {
     try {
       const result = await pool.query(
         'SELECT id, content FROM messages WHERE id > $1 ORDER BY id',
         [socket.handshake.auth.serverOffset || 0]
       );
-      
+
       for (const row of result.rows) {
         socket.emit('chat message', row.content, row.id);
       }
@@ -49,7 +48,7 @@ if (!socket.recovered) {
     }
   }
 
- socket.on('chat message', async (msg) => {
+  socket.on('chat message', async (msg) => {
     console.log('message: ' + msg);
     let result;
     try {
@@ -68,9 +67,6 @@ if (!socket.recovered) {
   socket.on('disconnect', () => {
     console.log('User disconnected', socket.id);
   });
-
-  connectionStateRecovery: {
-  }
 }); 
 
 // prep for deployment
