@@ -13,7 +13,9 @@
   "type": "module",
   "dependencies": {
     "express": "^4.22.1",
+    "pg": "^8.11.3",
     "socket.io": "^4.8.3",
-    "pg": "^8.11.3"
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   }
 }
