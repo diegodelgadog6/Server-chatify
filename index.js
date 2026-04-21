@@ -30,10 +30,24 @@ app.get('/', (req, res) => {
   res.send('<h1>Hello world</h1>');
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   console.log('a user connected', socket.id);
 
-socket.on('chat message', (msg) => {
+  if (!socket.recovered) {
+    // if the connection state recovery was not successful
+    try {
+      await db.each('SELECT id, content FROM messages WHERE id > ?',
+        [socket.handshake.auth.serverOffset || 0],
+        (_err, row) => {
+          socket.emit('chat message', row.content, row.id);
+        }
+      )
+    } catch (e) {
+      // something went wrong
+    }
+  }
+
+  socket.on('chat message', async (msg) => {
     console.log('message: ' + msg);
 
     let result;
@@ -46,8 +60,6 @@ socket.on('chat message', (msg) => {
     }
     // include the offset with the message
     io.emit('chat message', msg, result.lastID);
-    
-    io.emit('chat message', msg);
   });
   
   socket.on('disconnect', () => {
