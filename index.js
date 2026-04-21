@@ -2,25 +2,26 @@ import express from 'express';
 import { disconnect } from 'node:cluster';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
-import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
-  cors: 'http://localhost:5173/',
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
 });
 
-// open the database file
-const db = await open({
-  filename: 'chat.db',
-  driver: sqlite3.Database
+// PostgreSQL connection
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
 });
 
-// create our 'messages' table (you can ignore the 'client_offset' column for now)
-await db.exec(`
+await pool.query(`
   CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       client_offset TEXT UNIQUE,
       content TEXT
   );
@@ -36,12 +37,10 @@ io.on('connection', async (socket) => {
   if (!socket.recovered) {
     // if the connection state recovery was not successful
     try {
-      await db.each('SELECT id, content FROM messages WHERE id > ?',
-        [socket.handshake.auth.serverOffset || 0],
-        (_err, row) => {
-          socket.emit('chat message', row.content, row.id);
-        }
-      )
+      const result = await pool.query('SELECT id, content FROM messages WHERE id > $1', [socket.handshake.auth.serverOffset || 0]);
+      result.rows.forEach((row) => {
+        socket.emit('chat message', row.content, row.id);
+      });
     } catch (e) {
       // something went wrong
     }
