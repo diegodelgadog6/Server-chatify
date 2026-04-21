@@ -2,7 +2,7 @@ import express from 'express';
 import { disconnect } from 'node:cluster';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
-import { open } from 'sqlite';
+import pg from 'pg';
 
 const app = express();
 const server = createServer(app);
@@ -34,31 +34,35 @@ app.get('/', (req, res) => {
 io.on('connection', async (socket) => {
   console.log('a user connected', socket.id);
 
-  if (!socket.recovered) {
-    // if the connection state recovery was not successful
+if (!socket.recovered) {
     try {
-      const result = await pool.query('SELECT id, content FROM messages WHERE id > $1', [socket.handshake.auth.serverOffset || 0]);
-      result.rows.forEach((row) => {
+      const result = await pool.query(
+        'SELECT id, content FROM messages WHERE id > $1 ORDER BY id',
+        [socket.handshake.auth.serverOffset || 0]
+      );
+      
+      for (const row of result.rows) {
         socket.emit('chat message', row.content, row.id);
-      });
+      }
     } catch (e) {
-      // something went wrong
+      console.error('Error fetching messages:', e);
     }
   }
 
-  socket.on('chat message', async (msg) => {
+ socket.on('chat message', async (msg) => {
     console.log('message: ' + msg);
-
     let result;
     try {
-      // store the message in the database
-      result = await db.run('INSERT INTO messages (content) VALUES (?)', msg);
+      result = await pool.query(
+        'INSERT INTO messages (content) VALUES ($1) RETURNING id',
+        [msg]
+      );
+      // include the offset with the message
+      io.emit('chat message', msg, result.rows[0].id);
     } catch (e) {
-      // TODO handle the failure
+      console.error('Error inserting message:', e);
       return;
     }
-    // include the offset with the message
-    io.emit('chat message', msg, result.lastID);
   });
   
   socket.on('disconnect', () => {
@@ -69,6 +73,8 @@ io.on('connection', async (socket) => {
   }
 }); 
 
-server.listen(3000, () => {
-  console.log('server running at http://localhost:3000');
+// prep for deployment
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`server running on port ${PORT}`);
 });
