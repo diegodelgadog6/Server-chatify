@@ -29,6 +29,9 @@ await pool.query(`
   );
 `);
 
+// tracker for users connected in each room
+const roomUsers = {}; 
+
 app.get("/", (req, res) => {
   res.send("<h1>Hello world</h1>");
 });
@@ -42,6 +45,15 @@ io.on("connection", async (socket) => {
     socket.join(room);
     socket.data.username = username;
     socket.data.room = room;
+
+    // adds user to the room list and avoids duplicates
+    if (!roomUsers[room]) roomUsers[room] = [];
+    if (!roomUsers[room].find(user => user.id === socket.id)) {
+      roomUsers[room].push({ id: socket.id, username });
+    }
+
+    // sends the updated list of users to everyone in the room
+    io.to(room).emit("room users", roomUsers[room]);
 
     // afte user joins room we fetch the history and send it back to user
     try {
@@ -61,6 +73,13 @@ io.on("connection", async (socket) => {
   // for leaving room sends message to other users in the room youve left and stops recieving messages from that room
   socket.on("leave room", ({ room }) => {
     socket.leave(room);
+
+    // removes user from the room list and updates other users
+    if (roomUsers[room]) {
+      roomUsers[room] = roomUsers[room].filter(user => user.id !== socket.id);
+      io.to(room).emit("room users", roomUsers[room]);
+    }
+
     io.to(room).emit("user left", { username: socket.data.username, room });
   });
 
@@ -78,6 +97,15 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("disconnect", () => {
+    // removes user from all rooms lists they were in upon disconnecting
+    for (const room in roomUsers) {
+      const initialCount = roomUsers[room].length;
+      roomUsers[room] = roomUsers[room].filter(user => user.id !== socket.id);
+      
+      if (roomUsers[room].length !== initialCount) {
+        io.to(room).emit("room users", roomUsers[room]);
+      }
+    }
     console.log("User disconnected", socket.id);
   });
 });
