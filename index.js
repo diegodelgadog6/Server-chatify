@@ -106,6 +106,20 @@ io.on("connection", async (socket) => {
     }
   });
 
+  // TICKET-5: Typing indicator - notify others when user is typing
+  socket.on("typing", ({ username, room }) => {
+    // Send to all users in the room EXCEPT the one typing
+    socket.to(room).emit("user typing", { username, room });
+    console.log(`[TYPING] ${username} is typing in "${room}"`);
+  });
+
+  // TICKET-5: Typing indicator - notify others when user stops typing
+  socket.on("stop typing", ({ username, room }) => {
+    // Send to all users in the room
+    socket.to(room).emit("stop typing", { username, room });
+    console.log(`[STOP TYPING] ${username} stopped typing in "${room}"`);
+  });
+
   socket.on("disconnect", () => {
     // Auto-cleanup when user disconnects without explicit 'leave room' (TICKET-3)
     const userInfo = socketToUser.get(socket.id);
